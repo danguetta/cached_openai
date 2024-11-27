@@ -42,3 +42,9 @@ client.save_cache()
 ```
 
 This will save a `open_cache.pkl.gz` containing the current cache in memory, which will be loaded every time the package is imported.
+
+### Seed handling
+
+If an OpenAI function is called with a seed while creating the cache, two behaviors are supported:
+  - By default, the result will be cached with the seed - in other words, the package will only retrieve the cached entry if the function is called again with the same seed.
+  - If the client is created with `strip_seed=True` (i.e. `cached_openai.OpenAI(..., strip_seed=True)`), the result will be saved in the cache *twice* - once with the seed in question, and once without the seed. In the future, if users call the function without any seed specified, that response will also be returned. This is useful in instances where you'd like a specific seeded response to be returned when the function is called with certain values.
