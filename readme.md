@@ -6,7 +6,7 @@ When the library is imported, it looks for a `open_cache.pkl.gz` file in the wor
 
 Every time a function is called, it checks for a result in the cache - if it exists, it returns it for free rather than hitting the API again.
 
-The library is extremely lightweight, and works with *any* function under `openai.OpenAI()` of whatever version of the `openai` package is currently installed - it does not rely on any specific version.
+The library is extremely lightweight, and works with *any* function under `openai.OpenAI()` of whatever version of the `openai` package is currently installed - it does not rely on any specific version. The only restriction is that functions must be called using keyword arguments only (i.e., call a function using `f(x=1, y=2)` instead of `f(1,2)`).
 
 Using it is as simple as switching the import line; instead of
 

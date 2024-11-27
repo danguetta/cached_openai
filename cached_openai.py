@@ -43,7 +43,7 @@ class CachedClient():
         '''
         return CachedClient(api_key=self._api_key, stem=self._stem + [name], update_cache=self._update_cache)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, **kwargs):
         # Get the cache key, including the function name (stem) and arguments
         key = hashlib.md5(json.dumps({'step':self._stem, 'args':args, 'kwargs':kwargs}, sort_keys=True).encode('utf-8')).hexdigest()
 
@@ -61,7 +61,7 @@ class CachedClient():
             rel_func = getattr(rel_func, attr)
 
         # Call it
-        out = rel_func(*args, **kwargs)
+        out = rel_func(**kwargs)
 
         # If we're update the cache, save the result there
         if self._update_cache:
