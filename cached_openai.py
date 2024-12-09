@@ -58,23 +58,31 @@ if os.path.exists(TEMPORARY_CACHE_FILE_NAME):
 
 # Create a function to initialize the cached OpenAI client using
 #       cached_openai.OpenAI(...)
-def OpenAI(api_key : str, update_cache : bool = False, strip_seed : bool = False):
-    return CachedClient(api_key, update_cache=update_cache, strip_seed=strip_seed)
+def OpenAI(api_key : str):
+    return CachedClient(api_key=api_key)
 
 # Create an equivalent function for the asynchronous OpenAI client
-def AsyncOpenAI(api_key : str, update_cache : bool = False, strip_seed : bool = False):
-    return CachedClient(api_key, update_cache=update_cache, strip_seed=strip_seed, is_async=True)
+def AsyncOpenAI(api_key : str):
+    return CachedClient(api_key=api_key, is_async=True)
+
+# Create equivalent functions that will save the runs to the cache
+def OpenAI_(api_key : str, strip_seed : bool = False, strip_raw_response : bool = False):
+    return CachedClient(api_key, update_cache=True, strip_seed=strip_seed, strip_raw_response=strip_raw_response)
+
+def AsyncOpenAI_(api_key : str, strip_seed : bool = False, strip_raw_response : bool = False):
+    return CachedClient(api_key, update_cache=True, strip_seed=strip_seed, strip_raw_response=strip_raw_response, is_async=True)
 
 class CachedClient():
     '''
     This CachedClient object replicates the openai.OpenAI client object
     '''
 
-    def __init__(self, api_key=None, stem=[], update_cache : bool = False, strip_seed : bool = False, is_async : bool = False):
+    def __init__(self, api_key=None, stem=[], update_cache : bool = False, strip_seed : bool = False, strip_raw_response : bool = False, is_async : bool = False):
         self._api_key = api_key
         self._stem = stem
         self._update_cache = update_cache
         self._strip_seed = strip_seed
+        self._strip_raw_response = strip_raw_response
         self._is_async = is_async
 
     def __getattr__(self, name : str):
@@ -97,7 +105,11 @@ class CachedClient():
         if strip_seed:
             kwargs = {k:v for k,v in kwargs.items() if k != 'seed'}
         
-        return hashlib.md5(json.dumps({'stem':self._stem, 'kwargs':kwargs}, sort_keys=True).encode('utf-8')).hexdigest()
+        this_stem = self._stem
+        if self._strip_raw_response:
+            this_stem = [i for i in this_stem if i != 'with_raw_response']
+
+        return hashlib.md5(json.dumps({'stem':this_stem, 'kwargs':kwargs}, sort_keys=True).encode('utf-8')).hexdigest()
 
     def read_from_cache(self, kwargs):
         '''
@@ -116,7 +128,7 @@ class CachedClient():
             print('No saved result found')
             return None
     
-    def write_to_cache(self, kwargs, out, runtime):
+    def write_to_cache(self, kwargs, out, run_time):
         '''
         This function will write the result of the function described in self._stem called with
         parameters kwargs to the cache. If self._strip_seed is True, it will be saved both *with*
@@ -137,10 +149,13 @@ class CachedClient():
                 with open(TEMPORARY_CACHE_FILE_NAME, 'a') as f:
                     f.write(base64.b64encode(pickle.dumps([key, value])).decode('utf-8') + '\n')
             
-            cache_write(self.get_cache_key(kwargs), (out, time.time(), runtime))
+            if self._strip_raw_response:
+                out = out.parse()
+
+            cache_write(self.get_cache_key(kwargs), (out, time.time(), run_time))
             
             if 'seed' in kwargs:
-                cache_write(self.get_cache_key(kwargs, strip_seed=self._strip_seed), (out, time.time(), runtime))
+                cache_write(self.get_cache_key(kwargs, strip_seed=self._strip_seed), (out, time.time(), run_time))
 
     def __call__(self, **kwargs):
         '''
