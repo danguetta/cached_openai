@@ -8,12 +8,16 @@
 # See readme file for usage instructions
 
 CACHE_FILE_NAME = 'openai_cache.pkl.gz'
+TEMPORARY_CACHE_FILE_NAME = 'openai_cache_temp.txt'
 
 import openai
 import hashlib
 import json
 import pickle
 import gzip
+import time
+import base64
+import os
 
 # Try and load the cache from disk; if no cache is found, start with an empty dictionary
 # This is a global variable to ensure if various CachedClient objects are created, they
@@ -23,6 +27,34 @@ try:
         cache = pickle.load(f)
 except:
     cache = {}
+
+def persist_cache():
+    '''
+    Save the cache to disk, and delete the temporary cache file
+    '''
+    with gzip.open(CACHE_FILE_NAME, 'wb') as f:
+        pickle.dump(cache, f)
+    
+    try:
+        os.remove(TEMPORARY_CACHE_FILE_NAME)
+    except:
+        pass
+
+    print('Cache saved and temporary cache file deleted')
+
+# Check whether a temporary cache file remains from a previous run; if so, load it, add it
+# to the cache, and save the cache file
+if os.path.exists(TEMPORARY_CACHE_FILE_NAME):
+    print('Found temporary cache file; loading and adding to cache')
+
+    with open(TEMPORARY_CACHE_FILE_NAME, 'r') as f:
+        data = f.read().strip().split('\n')
+    
+    for line in data:
+        key, value = pickle.loads(base64.b64decode(line))
+        cache[key] = value
+    
+    persist_cache()
 
 # Create a function to initialize the cached OpenAI client using
 #       cached_openai.OpenAI(...)
@@ -38,7 +70,7 @@ class CachedClient():
     This CachedClient object replicates the openai.OpenAI client object
     '''
 
-    def __init__(self, api_key, stem=[], update_cache : bool = False, strip_seed : bool = False, is_async : bool = False):
+    def __init__(self, api_key=None, stem=[], update_cache : bool = False, strip_seed : bool = False, is_async : bool = False):
         self._api_key = api_key
         self._stem = stem
         self._update_cache = update_cache
@@ -55,13 +87,6 @@ class CachedClient():
                             update_cache = self._update_cache,
                             strip_seed   = self._strip_seed,
                             is_async     = self._is_async)
-
-    def save_cache(self):
-        '''
-        Save the cache to disk
-        '''
-        with gzip.open(CACHE_FILE_NAME, 'wb') as f:
-            pickle.dump(cache, f)
 
     def get_cache_key(self, kwargs, strip_seed : bool = False):
         '''
@@ -86,25 +111,36 @@ class CachedClient():
 
         if key in cache:
             print('Saved result found')
-            return cache[key]
+            return cache[key][0]
         else:
             print('No saved result found')
             return None
     
-    def write_to_cache(self, kwargs, out):
+    def write_to_cache(self, kwargs, out, runtime):
         '''
         This function will write the result of the function described in self._stem called with
         parameters kwargs to the cache. If self._strip_seed is True, it will be saved both *with*
-        any seed parameter and without
+        any seed parameter and without.
+
+        It also temporarily adds the result to the temporary cache txt file, so that if we need
+        to interrupt the program prematurely, the result is not lost
         '''
 
         if self._update_cache:
             print('Saving result to the cache')
 
-            cache[self.get_cache_key(kwargs)] = out
+            def cache_write(key, value):
+                # Save to the cache in memory
+                cache[key] = value
 
+                # Save to the temporary cache file
+                with open(TEMPORARY_CACHE_FILE_NAME, 'a') as f:
+                    f.write(base64.b64encode(pickle.dumps([key, value])).decode('utf-8') + '\n')
+            
+            cache_write(self.get_cache_key(kwargs), (out, time.time(), runtime))
+            
             if 'seed' in kwargs:
-                cache[self.get_cache_key(kwargs, strip_seed=self._strip_seed)] = out
+                cache_write(self.get_cache_key(kwargs, strip_seed=self._strip_seed), (out, time.time(), runtime))
 
     def __call__(self, **kwargs):
         '''
@@ -133,12 +169,14 @@ class CachedClient():
 
         if self._is_async:
             async def async_func():
+                start_time = time.time()
                 out = await rel_func(**kwargs)
-                self.write_to_cache(kwargs, out)
+                self.write_to_cache(kwargs, out, time.time() - start_time)
                 return out
             
             return async_func()
         else:
+            start_time = time.time()
             out = rel_func(**kwargs)
-            self.write_to_cache(kwargs, out)
+            self.write_to_cache(kwargs, out, time.time() - start_time)
             return out
