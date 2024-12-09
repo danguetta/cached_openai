@@ -7,6 +7,8 @@
 #
 # See readme file for usage instructions
 
+CACHE_FILE_NAME = 'openai_cache.pkl.gz'
+
 import openai
 import hashlib
 import json
@@ -17,7 +19,7 @@ import gzip
 # This is a global variable to ensure if various CachedClient objects are created, they
 # all share the same cache
 try:
-    with gzip.open('cache.pkl.gz', 'rb') as f:
+    with gzip.open(CACHE_FILE_NAME, 'rb') as f:
         cache = pickle.load(f)
 except:
     cache = {}
@@ -58,7 +60,7 @@ class CachedClient():
         '''
         Save the cache to disk
         '''
-        with gzip.open('cache.pkl.gz', 'wb') as f:
+        with gzip.open(CACHE_FILE_NAME, 'wb') as f:
             pickle.dump(cache, f)
 
     def get_cache_key(self, kwargs, strip_seed : bool = False):
