@@ -94,7 +94,7 @@ class CachedClient():
                             stem               = self._stem + [name],
                             update_cache       = self._update_cache,
                             strip_seed         = self._strip_seed,
-                            strip_raw_response = self._strip_raw_response
+                            strip_raw_response = self._strip_raw_response,
                             is_async           = self._is_async            )
 
     def get_cache_key(self, kwargs, strip_seed : bool = False):
