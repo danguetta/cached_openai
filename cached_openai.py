@@ -90,11 +90,12 @@ class CachedClient():
         Any time we try to access an attribute of this class with a ., add the attribute
         to the stem, and return a new CachedClient object with that stem
         '''
-        return CachedClient(api_key      = self._api_key,
-                            stem         = self._stem + [name],
-                            update_cache = self._update_cache,
-                            strip_seed   = self._strip_seed,
-                            is_async     = self._is_async)
+        return CachedClient(api_key            = self._api_key,
+                            stem               = self._stem + [name],
+                            update_cache       = self._update_cache,
+                            strip_seed         = self._strip_seed,
+                            strip_raw_response = self._strip_raw_response
+                            is_async           = self._is_async            )
 
     def get_cache_key(self, kwargs, strip_seed : bool = False):
         '''
@@ -155,7 +156,7 @@ class CachedClient():
             cache_write(self.get_cache_key(kwargs), (out, time.time(), run_time))
             
             if 'seed' in kwargs:
-                cache_write(self.get_cache_key(kwargs, strip_seed=self._strip_seed), (out, time.time(), run_time))
+                cache_write(self.get_cache_key(kwargs, strip_seed=self._strip_seed or kwargs.get('strip_seed', False)), (out, time.time(), run_time))
 
     def __call__(self, **kwargs):
         '''
