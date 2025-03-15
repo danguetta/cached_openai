@@ -33,7 +33,3 @@ Get an API token from (select "entire account" as the scope)
 Publish
 
 ```python3 -m twine upload dist/*```
-
-Test install (don't use dependencies because test pypi might not have the same packages available)
-
-```pip install --index-url https://test.pypi.org/simple/ --no-deps cached_openai```
