@@ -145,7 +145,8 @@ class CachedClient():
         
         # Check whether we have a result
         if key in self._cache:
-            print('Found a saved result in the cache')
+            if self._verbose
+                print('Found a saved result in the cache')
             
             # Retrieve the entry from the cache
             cache_entry = self._cache[key]
