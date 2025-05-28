@@ -15,7 +15,7 @@ import inspect
 
 # There are some keywords that - when provided to an OpenAI function - do not change
 # the result; we should ignore these completely when caching results
-IRRELEVANT_KWARGS     = ['timeout']
+IRRELEVANT_KWARGS     = ['timeout', 'delay']
 
 class CachedClient():
     '''
@@ -65,13 +65,44 @@ class CachedClient():
                 print()
             except:
                 pass
-            
+
+        if __package__ != 'cached_openai':
+            required_prefix = __package__.split('_')[0]
+
+            # If we're calling this directly (i.e., if the stem is []), ensure the key is an appropriate
+            # key and print a warning in re: the intermediate server
+            if (self._api_key is not None) and (len(self._stem) == 0):        
+                if not self._api_key.startswith(required_prefix):
+                    raise BaseException('\nYou are trying to use this library with an OpenAI key. You should not provide\n'
+                                        'your OpenAI key to any library other than the official openai library. This\n'
+                                        'library is only meant to be used with the API key provided by your instructor,\n'
+                                       f'which will always start wtih the characters "{required_prefix}-".')
+                else:
+                    # The API key starts with the correct text; transform it to the actual key
+                    self._api_key = 'sk' + self._api_key[len(required_prefix):]
+
+                print('WARNING : You will be making requests via the class server. These requests may be\n'
+                      '          logged. Do *NOT* make any requests with confidential or sensitive data.')
+
+
         # In some cases, we have multiple results for a single set of keys; this is so that
         # we can simulate the "real" OpenAI API that would return different results every time
         # it is run. Initialize a dictionary to store how many responses we've returned for a
         # given key, so that we know the next one we should return next time it is called
         self._last_entry_returned = last_entry_returned
+
+    def check_remaining_credits(self) -> dict:
+        '''
+        Make a request from the proxy server for remaining credits
+        '''
+        import requests
+        out = requests.get(f'https://{__package__.replace("_","-")}.guetta.com/key/info', headers={'x-litellm-api-key' : f'Bearer {self._api_key}'}).json()
+        out = out['info']
         
+        return {'max_budget'       : out['max_budget'],
+                'spent_so_far'     : out['spend'],
+                'remaining_budget' : out['max_budget'] - out['spend']}
+
     def __getattr__(self, name : str):
         '''
         This function is called whenever an instance of this class is accessed with a .;
@@ -375,27 +406,33 @@ class CachedClient():
 
             if self._is_async:
                 async def async_func():
-                    if self._delay_responses:
+                    if self._delay_responses or ('delay' in kwargs and kwargs['delay']):
                         await asyncio.sleep(out['run_time'])
                     return out['out']
                 return async_func()
             
             else:
-                if self._delay_responses:
+                if self._delay_responses or ('delay' in kwargs and kwargs['delay']):
                     time.sleep(out['run_time'])
                 return out['out']
         
         # If we reached this point, we need to query OpenAI. Make sure we have an OpenAI key
         if self._api_key is None:
             raise ValueError('Your request is not available in the cache, and you did not provide '
-                             "an OpenAI API key, so I can't query OpenAI for you.")
+                             "an API key, so I can't query OpenAI for you.")
         
         # Create a "real" openai.OpenAI client object (sync or async as needed)
-        if self._is_async:
-            rel_func = openai.AsyncOpenAI(api_key=self._api_key)
+        if __package__ == 'cached_openai':
+            if self._is_async:
+                rel_func = openai.AsyncOpenAI(api_key=self._api_key)
+            else:
+                rel_func = openai.OpenAI(api_key=self._api_key)
         else:
-            rel_func = openai.OpenAI(api_key=self._api_key)
-
+            if self._is_async:
+                rel_func = openai.AsyncOpenAI(api_key=self._api_key, base_url=f'https://{__package__.replace("_","-")}.guetta.com')
+            else:
+                rel_func = openai.OpenAI(api_key=self._api_key, base_url=f'https://{__package__.replace("_","-")}.guetta.com')
+                
         # Go down the stem tree to find the relevant function
         for attr in self._stem:
             rel_func = getattr(rel_func, attr)

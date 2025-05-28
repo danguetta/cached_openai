@@ -57,10 +57,6 @@ def download_cache(cache_url : str, target_file : str) -> None:
         progress_bar.close()
 
 class TqdmFileReader:
-    '''
-    This file reader class wraps a file object and provides a tqdm progress bar
-    '''
-
     def __init__(self, file_path):
         self.f = open(file_path, "rb")
         self.total = os.path.getsize(file_path)
@@ -92,18 +88,26 @@ def load_cache_file(cache_loc : str) -> tuple[bool, dict]:
     It returns the object from the pickle
     '''
 
-    try:
-        reader = TqdmFileReader(cache_loc)
-        obj = pickle.load(reader)
-        reader.close()
+    reader = TqdmFileReader(cache_loc)
+    obj = pickle.load(reader)
+    reader.close()
 
-        return obj
+    return obj
+
+    try:
+        pass
+    except:
+        raise ValueError('Invalid cache file provided')
+    
+    '''
+    try:
+        return pickle.loads(cache_file)
     except:
         try:
-            with open(cache_loc, 'rb') as f : data = f.read()
-            return pickle.loads(gzip.decompress(data))
+            return pickle.loads(gzip.decompress(cache_file))
         except:
             raise ValueError('Invalid cache file provided')
+    '''
 
 def get_cache(cache_file_name      : str          ,
               temp_cache_file_name : str          ,
@@ -164,12 +168,11 @@ def get_cache(cache_file_name      : str          ,
             pickle.dump((delay_responses_new, {}), open(cache_loc, 'wb'))
 
         else:
-            if __package__ != 'cached_openai':
-                raise(BaseException('\nERROR: No cache file was found in the folder in which this notebook is located.\n'
-                            "Please make sure you've downloaded the files from the start of this module and\n"
-                            'that you are running this notebook in the downloaded folder. Please contact\n'
-                            'the teaching team if you are still having issues.\n'))
-
+            raise(BaseException('\nERROR: No cache file was found in the folder in which this notebook is located.\n'
+                                  "Please make sure you've downloaded the files from the start of this module and\n"
+                                  'that you are running this notebook in the downloaded folder. Please contact\n'
+                                  'the teaching team if you are still having issues.\n'))
+            
             cache_url = input('No cache file found; please enter a URL to download a cache file from\n')
 
             try:
@@ -183,6 +186,8 @@ def get_cache(cache_file_name      : str          ,
     
     # Finally, read the cache file
     delay_responses, cache = load_cache_file(cache_loc)
+    #with open(cache_loc, 'rb') as f : data = f.read()
+    #delay_responses, cache = load_cache_file(data)
     
     # Update with the temporary cache file, or the new delay_responses value
     # ----------------------------------------------------------------------
