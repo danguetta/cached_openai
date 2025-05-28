@@ -414,7 +414,16 @@ class CachedClient():
             else:
                 if self._delay_responses or ('delay' in kwargs and kwargs['delay']):
                     time.sleep(out['run_time'])
-                return out['out']
+
+                if 'stream' in kwargs and kwargs['stream']:
+                    def make_generator():
+                        for i in out['out']:
+                            time.sleep(i[0])
+                            yield i[1]
+                    
+                    return make_generator()
+                else:
+                    return out['out']
         
         # If we reached this point, we need to query OpenAI. Make sure we have an OpenAI key
         if self._api_key is None:
@@ -463,7 +472,25 @@ class CachedClient():
         
         else:
             start_time = time.time()
-            out = rel_func(**kwargs_copy)
-            self.write_to_cache(kwargs, out, time.time() - start_time)
 
-            return out
+            if ('stream' in kwargs) and kwargs['stream']:
+                def make_generator():
+                    out_ = rel_func(**kwargs_copy)
+
+                    out = []
+                    last_time = time.time()
+                    for i in out_:
+                        out.append((time.time() - last_time, i))
+                        last_time = time.time()
+                        yield i
+                    
+                    self.write_to_cache(kwargs, out, time.time() - start_time)
+
+                return make_generator()
+
+            else:
+                out = rel_func(**kwargs_copy)
+
+                self.write_to_cache(kwargs, out, time.time() - start_time)
+
+                return out

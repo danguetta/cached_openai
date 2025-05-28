@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cached_openai"
-version = "0.0.8"
+version = "0.0.9"
 dependencies = [
     "requests>=2.32.2",
     "tqdm>=4.67.1",
