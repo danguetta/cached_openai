@@ -1,3 +1,5 @@
+CLASS_MODE = False
+
 import requests
 import gzip
 import tqdm
@@ -5,6 +7,7 @@ import os
 import importlib.resources
 import pickle
 import struct
+from tqdm import tqdm
 
 def download_cache(cache_url : str, target_file : str) -> None:
     '''
@@ -55,7 +58,34 @@ def download_cache(cache_url : str, target_file : str) -> None:
         
         progress_bar.close()
 
-def load_cache_file(cache_file : bytes) -> dict:
+class TqdmFileReader:
+    '''
+    This file reader class wraps a file object and provides a tqdm progress bar
+    '''
+
+    def __init__(self, file_path):
+        self.f = open(file_path, "rb")
+        self.total = os.path.getsize(file_path)
+        self.pbar = tqdm(total=self.total, unit='B', unit_scale=True)
+    
+    def read(self, size=-1):
+        chunk = self.f.read(size)
+        self.pbar.update(len(chunk))
+        return chunk
+
+    def readline(self, *args, **kwargs):
+        line = self.f.readline(*args, **kwargs)
+        self.pbar.update(len(line))
+        return line
+
+    def __getattr__(self, attr):
+        return getattr(self.f, attr)
+
+    def close(self):
+        self.f.close()
+        self.pbar.close()
+
+def load_cache_file(cache_loc : str) -> tuple[bool, dict]:
     '''
     This function accept a bytes string containing a pickled object; if first checks
     whether it can be loaded uncompressed, and if not, it tries to load it as a
@@ -65,10 +95,15 @@ def load_cache_file(cache_file : bytes) -> dict:
     '''
 
     try:
-        return pickle.loads(cache_file)
+        reader = TqdmFileReader(cache_loc)
+        obj = pickle.load(reader)
+        reader.close()
+
+        return obj
     except:
         try:
-            return pickle.loads(gzip.decompress(cache_file))
+            with open(cache_loc, 'rb') as f : data = f.read()
+            return pickle.loads(gzip.decompress(data))
         except:
             raise ValueError('Invalid cache file provided')
 
@@ -115,7 +150,7 @@ def get_cache(cache_file_name      : str          ,
     elif os.path.exists(package_location.joinpath(cache_file_name)):
         # If there is no cache file in the working directory, look in the package
         # directory
-        cache_loc = package_location.joinpath(CACHE_FILE_NAME)
+        cache_loc = package_location.joinpath(cache_file_name)
         
         if verbose:
             print('Cache file found in the package directory.')
@@ -131,6 +166,12 @@ def get_cache(cache_file_name      : str          ,
             pickle.dump((delay_responses_new, {}), open(cache_loc, 'wb'))
 
         else:
+            if CLASS_MODE:
+                raise(BaseException('\nERROR: No cache file was found in the folder in which this notebook is located.\n'
+                            "Please make sure you've downloaded the files from the start of this module and\n"
+                            'that you are running this notebook in the downloaded folder. Please contact\n'
+                            'the teaching team if you are still having issues.\n'))
+
             cache_url = input('No cache file found; please enter a URL to download a cache file from\n')
 
             try:
@@ -143,8 +184,7 @@ def get_cache(cache_file_name      : str          ,
                 raise
     
     # Finally, read the cache file
-    with open(cache_loc, 'rb') as f : data = f.read()
-    delay_responses, cache = load_cache_file(data)
+    delay_responses, cache = load_cache_file(cache_loc)
     
     # Update with the temporary cache file, or the new delay_responses value
     # ----------------------------------------------------------------------

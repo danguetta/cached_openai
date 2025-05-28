@@ -61,8 +61,8 @@ class CachedClient():
                 with open('openai_key.txt', 'r') as f:
                     self._api_key = f.read().strip()
                 
-                if verbose:
-                    print('Read API key from openai_key.txt')
+                print('Read API key from openai_key.txt')
+                print()
             except:
                 pass
             
@@ -145,7 +145,7 @@ class CachedClient():
         
         # Check whether we have a result
         if key in self._cache:
-            if self._verbose
+            if self._verbose:
                 print('Found a saved result in the cache')
             
             # Retrieve the entry from the cache
@@ -212,7 +212,7 @@ class CachedClient():
                 # method
                 class Stream:
                     def __init__(self, bytes):
-                        self.byte_stream = io.ByteIO(bytes)
+                        self.byte_stream = io.BytesIO(base64.b64decode(bytes.encode('utf-8')))
                     
                     def iter_bytes(self):
                         while True:
