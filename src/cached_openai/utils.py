@@ -164,25 +164,28 @@ def get_cache(cache_file_name      : str          ,
             pickle.dump((delay_responses_new, {}), open(cache_loc, 'wb'))
 
         else:
-            if __package__ != 'cached_openai':
-                raise(BaseException('\nERROR: No cache file was found in the folder in which this notebook is located.\n'
-                            "Please make sure you've downloaded the files from the start of this module and\n"
-                            'that you are running this notebook in the downloaded folder. Please contact\n'
-                            'the teaching team if you are still having issues.\n'))
+            if __package__ == 'cached_openai':
+                cache_url = input('No cache file found; please enter a URL to download a cache file from\n')
 
-            cache_url = input('No cache file found; please enter a URL to download a cache file from\n')
-
-            try:
-                download_cache(cache_url, cache_file_name)
-                cache_loc = cache_file_name
-                
-                print('Cache file downloaded successfully.')
-            except:
-                print('Failed to download cache file')
-                raise
-    
+                try:
+                    download_cache(cache_url, cache_file_name)
+                    cache_loc = cache_file_name
+                    
+                    print('Cache file downloaded successfully.')
+                except:
+                    print('Failed to download cache file')
+                    raise
+            
+            else:
+                # Start with an empty cache
+                cache_loc = None
+        
     # Finally, read the cache file
-    delay_responses, cache = load_cache_file(cache_loc)
+    if cache_loc:
+        delay_responses, cache = load_cache_file(cache_loc)
+    else:
+        delay_responses = False
+        cache = {}
     
     # Update with the temporary cache file, or the new delay_responses value
     # ----------------------------------------------------------------------
