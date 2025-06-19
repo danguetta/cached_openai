@@ -81,6 +81,7 @@ class TqdmFileReader:
 
     def close(self):
         self.f.close()
+        self.pbar.update(self.total - self.pbar.n)
         self.pbar.close()
 
 def load_cache_file(cache_loc : str) -> tuple[bool, dict]:

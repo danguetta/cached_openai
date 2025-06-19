@@ -1,3 +1,5 @@
+Version is in toml file
+
 # To publish a new version of the pacakge
 
 Ensure build is installed
@@ -33,3 +35,7 @@ Get an API token from (select "entire account" as the scope)
 Publish
 
 ```python3 -m twine upload dist/*```
+
+## To publish a specific sub-package
+
+See publish_alt.sh
