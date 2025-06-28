@@ -8,3 +8,14 @@ if DEV_MODE:
 
 # Remove DEV_MODE from the namespace
 del DEV_MODE
+
+"""
+class ResponsePointer():
+    '''
+    This class is used to store duplicated cache entries without wasting space; if two entries
+    have the same value, one will simply contain a ResponsePointer pointing to the other
+    '''
+
+    def __init__(self, target):
+        self.target = target
+"""
