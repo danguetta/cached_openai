@@ -7,16 +7,35 @@ import pickle
 import base64
 import hashlib
 import importlib
+import json
+import numpy as np
 
 # This file contains utilities to materialize the cache into a form that
 # can be distributed
 
-def materialize_cache(cache           : dict,
-                      delay_responses : bool,
-                      compress        : bool,
-                      hash_keys       : bool,
-                      file_name       : str | None,
-                      used_keys       : list | None = None) -> str | None:
+def do_compress_embeddings(cache, hash_keys):
+    '''
+    Find the embedding entries, and compress them
+    '''
+
+    rel_keys = [i for i in cache.keys() if 'embeddings' in json.loads(i)['stem']]
+
+    for key in rel_keys:
+        for i in range(len(cache[key])):
+            for j in range(len(cache[key][i]['out'].data)):
+                cache[key][i]['out'].data[j].embedding = np.array(cache[key][i]['out'].data[j].embedding).astype(np.float16)
+
+        if hash_keys:
+            cache[hashlib.md5(key.encode('utf-8')).hexdigest()] = cache[key]
+            del cache[key]
+
+def materialize_cache(cache               : dict,
+                      delay_responses     : bool,
+                      compress            : bool,
+                      hash_keys           : bool,
+                      file_name           : str | None,
+                      used_keys           : list | None = None,
+                      compress_embeddings : bool = False) -> str | None:
     '''
     This function materializes the cache into a pickle file for distribution. It accepts
     the following arguments:
@@ -36,6 +55,10 @@ def materialize_cache(cache           : dict,
     # If we want used keys only, filter down the cache
     if used_keys:
         cache = {i:j for i, j in cache.items() if i in used_keys}
+
+    # If we want to compress embeddings, do it
+    if compress_embeddings:
+        do_compress_embeddings(cache, hash_keys == False)
 
     # If we want to hash the keys, go ahead and do it
     if hash_keys:
@@ -64,12 +87,13 @@ def materialize_cache(cache           : dict,
     else:
         return base64.b64encode(pickled_data).decode('utf-8')
     
-def create_self_contained(cache           : dict,
-                          delay_responses : bool,
-                          compress        : bool,
-                          hash_keys       : bool,
-                          file_name       : str | None,
-                          used_keys       : list | None = None) -> str | None:
+def create_self_contained(cache               : dict,
+                          delay_responses     : bool,
+                          compress            : bool,
+                          hash_keys           : bool,
+                          file_name           : str | None,
+                          used_keys           : list | None = None,
+                          compress_embeddings : bool = False) -> str | None:
     '''
     Returns a self-contained .py file that includes the cache inside of it.
 

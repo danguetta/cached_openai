@@ -9,6 +9,7 @@ dependencies = [
     "requests>=2.32.2",
     "tqdm>=4.67.1",
     "openai>=1.66.2",
+    "numpy>=1.26.1"
 ]
 authors = [
   { name="Daniel Guetta", email="daniel@guetta.com" },

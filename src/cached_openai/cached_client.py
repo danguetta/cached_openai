@@ -12,6 +12,7 @@ import requests
 import io
 import struct
 import inspect
+import numpy as np
 
 # There are some keywords that - when provided to an OpenAI function - do not change
 # the result; we should ignore these completely when caching results
@@ -276,6 +277,13 @@ class CachedClient():
                     
                     return {'out'      : AudioFile(),
                             'run_time' : cache_entry['run_time']}
+
+            # If we have an embedding that was saved as a lower-accuracy numpy array, reconvert
+            # it to a list
+            if type(out) == openai.types.create_embedding_response.CreateEmbeddingResponse:
+                for i in out.data:
+                    if type(i.embedding) == np.ndarray:
+                        i.embedding = list(i.embedding)
 
             # If we reached this point, we don't have an audio file - return
             return {'out'      : out,

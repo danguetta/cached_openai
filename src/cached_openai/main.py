@@ -79,10 +79,11 @@ def AsyncOpenAI(api_key : str | None = None):
 #  Create the materialization functions  #
 ##########################################
 
-def materialize(self_contained : bool,
-                compress       : bool,
-                hash_keys      : bool,
-                used_keys_only : bool):
+def materialize(self_contained      : bool,
+                compress            : bool,
+                hash_keys           : bool,
+                used_keys_only      : bool,
+                compress_embeddings : bool):
     '''
     This function materilizes the cache and prepares it for distribution. It accepts
     the following options
@@ -122,6 +123,8 @@ def materialize(self_contained : bool,
         your code, and then want to create a "clean" version to distribute. Just delete the
         openai_cache_used.txt file, run you clean code, and then run this with used_keys_only
         = True.
+      - compress_embeddings : if True, embeddings will be compressed to float16's, and the
+        keys of embedding entries will be hashed
     '''
 
     current_date = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -133,18 +136,20 @@ def materialize(self_contained : bool,
         used_keys = None
 
     if self_contained:
-        materialize_utils.create_self_contained(cache           = cache,
-                                                delay_responses = delay_responses,
-                                                compress        = compress,
-                                                hash_keys       = hash_keys,
-                                                file_name       = f'cached_openai_{current_date}.py',
-                                                used_keys       = used_keys)
+        materialize_utils.create_self_contained(cache               = cache,
+                                                delay_responses     = delay_responses,
+                                                compress            = compress,
+                                                hash_keys           = hash_keys,
+                                                file_name           = f'cached_openai_{current_date}.py',
+                                                used_keys           = used_keys,
+                                                compress_embeddings = compress_embeddings)
     else:
-        materialize_utils.materialize_cache(cache           = cache,
-                                            delay_responses = delay_responses,
-                                            compress        = compress,
-                                            hash_keys       = hash_keys,
-                                            file_name       = CACHE_FILE_NAME.split('.')[0]
-                                                                    + f'_{current_date}.'
-                                                                        + CACHE_FILE_NAME.split('.')[-1],
-                                            used_keys       = used_keys)
+        materialize_utils.materialize_cache(cache               = cache,
+                                            delay_responses     = delay_responses,
+                                            compress            = compress,
+                                            hash_keys           = hash_keys,
+                                            file_name           = CACHE_FILE_NAME.split('.')[0]
+                                                                        + f'_{current_date}.'
+                                                                            + CACHE_FILE_NAME.split('.')[-1],
+                                            used_keys           = used_keys,
+                                            compress_embeddings = compress_embeddings)
