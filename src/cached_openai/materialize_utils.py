@@ -52,9 +52,19 @@ def materialize_cache(cache               : dict,
                     not included in this list are discarded
     '''
 
+    # Ensure every entry in the cache is a list
+    assert all([type(cache[i]) == list for i in cache])
+
+    # Ensure every entry in those lists is a dict
+    assert all([type(j) == dict for i in cache for j in cache[i]])
+
     # If we want used keys only, filter down the cache
     if used_keys:
         cache = {i:j for i, j in cache.items() if i in used_keys}
+
+        # Remove any entries to pointers we've just removed
+        for key in cache:
+            cache[key] = [i for i in cache[key] if (list(i.keys()) != ['TARGET']) or (i['TARGET'] in cache)]
 
     # If we want to compress embeddings, do it
     if compress_embeddings:
