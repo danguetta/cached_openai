@@ -465,7 +465,10 @@ class CachedClient():
                           "save it in the cached response. See the user manual (section 'repeated "
                           "requests') for details" )
                 kwargs_copy = {i:j for i, j in kwargs.items() if i != 'seed'}
-            
+        
+        # Remove a delay parameter if it exists
+        if 'delay' in kwargs_copy:
+            del kwargs_copy['delay']
 
         # Call it, write the result to the cache, and return either the value or the co-routine
         # if we are in async mode
