@@ -97,13 +97,7 @@ class CachedClient():
         Make a request from the proxy server for remaining credits
         '''
         import requests
-
-        lite_llm_subdomain = __package__.replace("_","-")
-
-        if lite_llm_subdomain == 'ba-openai':
-            lite_llm_subdomain = 'abf-openai'
-
-        out = requests.get(f'https://{lite_llm_subdomain}.guetta.com/key/info', headers={'x-litellm-api-key' : f'Bearer {self._api_key}'}).json()
+        out = requests.get(f'https://{__package__.replace("_","-")}.guetta.com/key/info', headers={'x-litellm-api-key' : f'Bearer {self._api_key}'}).json()
         out = out['info']
         
         return {'max_budget'       : out['max_budget'],
@@ -451,15 +445,10 @@ class CachedClient():
             else:
                 rel_func = openai.OpenAI(api_key=self._api_key)
         else:
-            lite_llm_subdomain = __package__.replace("_","-")
-
-            if lite_llm_subdomain == 'ba-openai':
-                lite_llm_subdomain = 'abf-openai'
-
             if self._is_async:
-                rel_func = openai.AsyncOpenAI(api_key=self._api_key, base_url=f'https://{lite_llm_subdomain}.guetta.com')
+                rel_func = openai.AsyncOpenAI(api_key=self._api_key, base_url=f'https://{__package__.replace("_","-")}.guetta.com')
             else:
-                rel_func = openai.OpenAI(api_key=self._api_key, base_url=f'https://{lite_llm_subdomain}.guetta.com')
+                rel_func = openai.OpenAI(api_key=self._api_key, base_url=f'https://{__package__.replace("_","-")}.guetta.com')
                 
         # Go down the stem tree to find the relevant function
         for attr in self._stem:
