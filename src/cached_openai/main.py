@@ -55,8 +55,9 @@ delay_responses, cache = utils.get_cache(CACHE_FILE_NAME, TEMP_CACHE_FILE_NAME, 
 #  Create the main entrypoints for the package  #
 #################################################
 
-def OpenAI(api_key : str | None = None):
+def OpenAI(api_key : str | None = None, base_url : str | None = None):
     return cached_client.CachedClient(                  api_key                   ,
+                                      base_url        = base_url                  ,
                                       cache           = cache                     ,
                                       verbose         = VERBOSE                   ,
                                       dev_mode        = DEV_MODE                  ,
@@ -65,8 +66,9 @@ def OpenAI(api_key : str | None = None):
                                       temp_cache_file = TEMP_CACHE_FILE_NAME      ,
                                       used_keys_file  = USED_KEYS_FILE              )
 
-def AsyncOpenAI(api_key : str | None = None):
+def AsyncOpenAI(api_key : str | None = None, base_url : str | None = None):
     return cached_client.CachedClient(                 api_key                    ,
+                                      base_url        = base_url                  ,
                                       cache           = cache                     ,
                                       verbose         = VERBOSE                   ,
                                       dev_mode        = DEV_MODE                  ,
