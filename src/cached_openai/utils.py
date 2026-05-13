@@ -106,11 +106,12 @@ def load_cache_file(cache_loc : str) -> tuple[bool, dict]:
         except:
             raise ValueError('Invalid cache file provided')
 
-def get_cache(cache_file_name      : str          ,
-              temp_cache_file_name : str          ,
-              dev_mode             : bool         ,
-              delay_responses_new  : bool         ,
-              verbose              : bool = False  ) -> tuple[bool, dict]:
+def get_cache(cache_file_name      : str               ,
+              temp_cache_file_name : str               ,
+              dev_mode             : bool              ,
+              delay_responses_new  : bool              ,
+              verbose              : bool = False      ,
+              cache_id             : str | None = None  ) -> tuple[bool, dict]:
     '''
     This function attempts to load the cache from disk, in the following order of priority
       - First, we look in the working directory
@@ -131,6 +132,11 @@ def get_cache(cache_file_name      : str          ,
       - The value of delay_responses to use
       - The cache
     '''
+
+    # If we have a cache ID, download that cache file
+    # -----------------------------------------------
+    if cache_id is not None:
+        download_cache(f'https://www.xlkitlearn.com/{cache_id}.gz', cache_file_name)
 
     # Load the existing cache
     # -----------------------
@@ -164,22 +170,9 @@ def get_cache(cache_file_name      : str          ,
             cache_loc = cache_file_name
             pickle.dump((delay_responses_new, {}), open(cache_loc, 'wb'))
 
-        else:
-            if __package__ == 'cached_openai':
-                cache_url = input('No cache file found; please enter a URL to download a cache file from\n')
-
-                try:
-                    download_cache(cache_url, cache_file_name)
-                    cache_loc = cache_file_name
-                    
-                    print('Cache file downloaded successfully.')
-                except:
-                    print('Failed to download cache file')
-                    raise
-            
-            else:
-                # Start with an empty cache
-                cache_loc = None
+        else:            
+            # Start with an empty cache
+            cache_loc = None
         
     # Finally, read the cache file
     if cache_loc:

@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cached_openai"
-version = "0.0.16"
+name = "ba_openai"
+version = "0.0.14"
 dependencies = [
     "requests>=2.32.2",
     "tqdm>=4.67.1",
@@ -14,7 +14,7 @@ dependencies = [
 authors = [
   { name="Daniel Guetta", email="daniel@guetta.com" },
 ]
-description = "A version of the OpenAI package that allows the caching of responses"
+description = "A version of the OpenAI package that allows the caching of responses, tailored for BA at CBS"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

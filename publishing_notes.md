@@ -39,3 +39,5 @@ Publish
 ## To publish a specific sub-package
 
 See publish_alt.sh
+
+Make sure there is a dist_{{package_name}} folder, and a pyproject_{{package_name}}.toml
