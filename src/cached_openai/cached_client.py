@@ -16,7 +16,11 @@ import numpy as np
 
 # There are some keywords that - when provided to an OpenAI function - do not change
 # the result; we should ignore these completely when caching results
-IRRELEVANT_KWARGS     = ['timeout', 'delay']
+IRRELEVANT_KWARGS     = ['timeout', 'delay', 'overwrite_cache']
+
+# Some parameters are only used internally by this cache library and should not be
+# passed to OpenAI
+NON_OPENAI_PARAMS     = ['delay', 'overwrite_cache']
 
 class CachedClient():
     '''
@@ -357,9 +361,23 @@ class CachedClient():
                 if seeded_key not in current_pointers:
                     self.modify_cache(stripped_key, self._cache.get(stripped_key, []) + [{'TARGET':seeded_key}])
             else:
-                # This isn't a seeded request. If we already have an entry there, append this request
-                # to the list
-                self.modify_cache(seeded_key, self._cache.get(seeded_key, []) + [out_obj])
+                # This isn't a seeded request. Each entry should have at most one non-seeded request;
+                # replace it
+                if seeded_key not in self._cache:
+                    out_cache = [out_obj]
+                else:
+                    cur_cache = self._cache[seeded_key]
+                    non_pointer_entries = [i_n for i_n, i in enumerate(cur_cache) if 'TARGET' not in i]
+
+                    if len(non_pointer_entries) == 0:
+                        out_cache = cur_cache + [out_obj]
+                    elif len(non_pointer_entries) == 1:
+                        out_cache = list(cur_cache)
+                        out_cache[non_pointer_entries[0]] = out_obj
+                    else:
+                        raise f'Multiple non-pointer entries found. seeded_key was {seeded_key}'
+                
+                self.modify_cache(seeded_key, out_cache)
                 
     def __call__(self, **kwargs):
         '''
@@ -367,7 +385,10 @@ class CachedClient():
         '''
 
         # Try and read the value from the cache
-        out = self.read_from_cache(kwargs)
+        if kwargs.get('overwrite_cache') == True:
+            out = None
+        else:
+            out = self.read_from_cache(kwargs)
 
         if out is not None:
             # We were able to pull a value from the cache; return either the value, or an async
@@ -397,7 +418,7 @@ class CachedClient():
         # If we reached this point, we need to query OpenAI. Make sure we have an OpenAI key
         if self._api_key is None:
             raise ValueError('Your request is not available in the cache, and you did not provide '
-                             "an API key, so I can't query OpenAI for you.")
+                             "an API key, so I can't run your request.")
         
         # Create a "real" openai.OpenAI client object (sync or async as needed)
         if self._is_async:
@@ -421,9 +442,8 @@ class CachedClient():
                           "requests') for details" )
                 kwargs_copy = {i:j for i, j in kwargs.items() if i != 'seed'}
         
-        # Remove a delay parameter if it exists
-        if 'delay' in kwargs_copy:
-            del kwargs_copy['delay']
+        # Remove non-open-AI parmeters if they exists
+        kwargs_copy = {i:j for i, j in kwargs.items() if i not in NON_OPENAI_PARAMS}
 
         # Call it, write the result to the cache, and return either the value or the co-routine
         # if we are in async mode
