@@ -74,6 +74,7 @@ class CachedClient():
         '''
 
         return CachedClient(api_key             = self._api_key,
+                            base_url            = self._base_url,
                             cache               = self._cache,
                             verbose             = self._verbose,
                             dev_mode            = self._dev_mode,
