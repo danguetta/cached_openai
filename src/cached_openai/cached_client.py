@@ -9,6 +9,7 @@ import asyncio
 import pickle
 import copy
 import requests
+import httpx
 import io
 import struct
 import inspect
@@ -137,7 +138,9 @@ class CachedClient():
         # look for the hashed key. Do NOT strip the seed - if the user intentionally added a seed argument,
         # we want THAT entry specifically
         key = self.get_cache_key(kwargs, hash_key = False)
+        unhashed_key = None
         if key not in self._cache:
+            unhashed_key = key
             key = self.get_cache_key(kwargs, hash_key = True)
         
         # Check whether we have a result
@@ -164,6 +167,8 @@ class CachedClient():
                     # Log the fact we used this key, and then follow the pointer
                     if self._dev_mode:
                         with open(self._used_keys_file, 'a') as f : f.write(key + '\n')
+                        if unhashed_key is not None: 
+                            with open('dehash_' + self._used_keys_file, 'a') as f : f.write(key + ':' + unhashed_key + '\n')
                     
                     key = cache_entry['TARGET']
                     cache_entry = self._cache[key]
@@ -171,6 +176,8 @@ class CachedClient():
             # Record the fact we've used the key
             if self._dev_mode:
                 with open(self._used_keys_file, 'a') as f: f.write(key + '\n')
+                if unhashed_key is not None:
+                    with open('dehash_' + self._used_keys_file, 'a') as f : f.write(key + ':' + unhashed_key + '\n')
             
             # Retrieve the output that was saved from OpenAI
             out = cache_entry['out']
@@ -420,19 +427,65 @@ class CachedClient():
             raise ValueError('Your request is not available in the cache, and you did not provide '
                              "an API key, so I can't run your request.")
         
-        # Create a "real" openai.OpenAI client object (sync or async as needed)
-        if self._is_async:
-            rel_func = openai.AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
+        # gemini-embedding-2-preview is an important model, but unfortunately it doesn't
+        # return in a format that is compatible with the OpenAI SDK. So we need to create a
+        # shim to make it work
+        if (self._stem == ['embeddings', 'create']) and (kwargs.get('model', '') == 'google/gemini-embedding-2-preview'):
+            def make_gemini_embedding_payload(**kwargs):
+                return {'url'     : "https://openrouter.ai/api/v1/embeddings",
+                        'headers' : {
+                                        "Authorization": f"Bearer {self._api_key}",
+                                        "Content-Type": "application/json"
+                                    },
+                        'data'    : json.dumps({
+                                    "model": "google/gemini-embedding-2-preview",
+                                    "input": kwargs['input']
+                                })}
+
+            def process_gemini_embedding_response(resp):
+                return openai.types.create_embedding_response.CreateEmbeddingResponse(
+                        data     = [openai.types.embedding.Embedding(object    = i['object'],
+                                                                     embedding = i['embedding'],
+                                                                     index     = i['index']) for i in resp['data']],
+                        model    = resp['model'],
+                        object   = resp['object'],
+                        usage    = openai.types.create_embedding_response.Usage(prompt_tokens = resp['usage']['prompt_tokens'],
+                                                                                total_tokens  = resp['usage']['total_tokens'],
+                                                                                cost          = resp['usage']['cost'] ),
+                        provider = resp['provider'],
+                        id       = resp['id']
+                )
+
+            if self._is_async:
+                async def rel_func(**kwargs):
+                    async with httpx.AsyncClient() as client:
+                        resp = (await client.post(**make_gemini_embedding_payload(**kwargs))).json()
+                    return process_gemini_embedding_response(resp)
+            else:
+                def rel_func(**kwargs):
+                    resp = requests.post(**make_gemini_embedding_payload(**kwargs)).json()
+                    
+                    return process_gemini_embedding_response(resp)
+                    
         else:
-            rel_func = openai.OpenAI(api_key=self._api_key, base_url=self._base_url)
-        
-        # Go down the stem tree to find the relevant function
-        for attr in self._stem:
-            rel_func = getattr(rel_func, attr)
+            # Create a "real" openai.OpenAI client object (sync or async as needed)
+            if self._is_async:
+                rel_func = openai.AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
+            else:
+                rel_func = openai.OpenAI(api_key=self._api_key, base_url=self._base_url)
+            
+            # Go down the stem tree to find the relevant function
+            for attr in self._stem:
+                rel_func = getattr(rel_func, attr)
+
+        # Make a copy of the kwargs
+        kwargs_copy = {i:j for i, j in kwargs.items()}
+
+        # Remove non-open-AI parmeters if they exist
+        kwargs_copy = {i:j for i, j in kwargs_copy.items() if i not in NON_OPENAI_PARAMS}
 
         # If the function was called with a seed but the OpenAI function does not accept one,
         # strip it before calling
-        kwargs_copy = {i:j for i, j in kwargs.items()}
         if 'seed' not in inspect.signature(rel_func).parameters:
             if 'seed' in kwargs_copy:
                 if self._verbose:
@@ -440,10 +493,7 @@ class CachedClient():
                           "I'll strip the parameter from the call before sending it to OpenAI, but "
                           "save it in the cached response. See the user manual (section 'repeated "
                           "requests') for details" )
-                kwargs_copy = {i:j for i, j in kwargs.items() if i != 'seed'}
-        
-        # Remove non-open-AI parmeters if they exists
-        kwargs_copy = {i:j for i, j in kwargs.items() if i not in NON_OPENAI_PARAMS}
+                kwargs_copy = {i:j for i, j in kwargs_copy.items() if i != 'seed'}
 
         # Call it, write the result to the cache, and return either the value or the co-routine
         # if we are in async mode

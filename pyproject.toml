@@ -4,19 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cached_openai"
-version = "0.0.21"
+version = "0.0.22"
 dependencies = [
     "requests>=2.32.2",
     "tqdm>=4.67.1",
     "openai>=1.66.2",
-    "numpy>=1.26.1"
+    "numpy>=1.26.1",
+    "httpx>=0.28.1"
 ]
 authors = [
   { name="Daniel Guetta", email="daniel@guetta.com" },
 ]
 description = "A version of the OpenAI package that allows the caching of responses"
-readme = "README.md"
-requires-python = ">=3.8"
+readme = "readme.md"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

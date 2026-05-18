@@ -1,6 +1,5 @@
 import requests
 import gzip
-import tqdm
 import os
 import importlib.resources
 import pickle
@@ -28,7 +27,7 @@ def download_cache(cache_url : str, target_file : str) -> None:
 
         # Get the total size and prepare the progress bar
         total_size = int(response.headers.get('content-length', 0))
-        progress_bar = tqdm.tqdm(total=total_size, unit='B', unit_scale=True, desc='Downloading cache file')
+        progress_bar = tqdm(total=total_size, unit='B', unit_scale=True, desc='Downloading cache file')
 
         if is_gz:
             # Monkey patch the read method
@@ -56,55 +55,70 @@ def download_cache(cache_url : str, target_file : str) -> None:
         
         progress_bar.close()
 
-class TqdmFileReader:
-    '''
-    This file reader class wraps a file object and provides a tqdm progress bar
-    '''
-
-    def __init__(self, file_path):
-        self.f = open(file_path, "rb")
-        self.total = os.path.getsize(file_path)
-        self.pbar = tqdm(total=self.total, unit='B', unit_scale=True)
-    
-    def read(self, size=-1):
-        chunk = self.f.read(size)
-        self.pbar.update(len(chunk))
-        return chunk
-
-    def readline(self, *args, **kwargs):
-        line = self.f.readline(*args, **kwargs)
-        self.pbar.update(len(line))
-        return line
-
-    def __getattr__(self, attr):
-        return getattr(self.f, attr)
-
-    def close(self):
-        self.f.close()
-        self.pbar.update(self.total - self.pbar.n)
-        self.pbar.close()
-
 def load_cache_file(cache_loc : str) -> tuple[bool, dict]:
     '''
     This function accept a bytes string containing a pickled object; if first checks
     whether it can be loaded uncompressed, and if not, it tries to load it as a
     compressed file
-    
+
     It returns the object from the pickle
     '''
 
+    class TqdmFileReader:
+        '''
+        This file reader class wraps a file object and provides a tqdm progress bar
+        '''
+
+        def __init__(self, file_path):
+            self.f = open(file_path, "rb")
+            self.total = os.path.getsize(file_path)
+            self.pbar = tqdm(total=self.total, unit='B', unit_scale=True)
+
+        def read(self, size=-1):
+            chunk = self.f.read(size)
+            self.pbar.update(len(chunk))
+            return chunk
+
+        def readline(self, *args, **kwargs):
+            line = self.f.readline(*args, **kwargs)
+            self.pbar.update(len(line))
+            return line
+
+        def seek(self, pos, whence=0):
+            result = self.f.seek(pos, whence)
+            self.pbar.n = self.f.tell()
+            self.pbar.refresh()
+            return result
+
+        def __getattr__(self, attr):
+            return getattr(self.f, attr)
+
+        def close(self):
+            self.f.close()
+            self.pbar.update(self.total - self.pbar.n)
+            self.pbar.close()
+
+    # Check if the file is gzipped by looking at magic bytes
+    with open(cache_loc, 'rb') as f:
+        magic = f.read(2)
+
+    is_gzipped = magic == b'\x1f\x8b'
+
+    reader = TqdmFileReader(cache_loc)
     try:
-        reader = TqdmFileReader(cache_loc)
-        obj = pickle.load(reader)
-        reader.close()
+        if is_gzipped:
+            # For gzipped files, wrap the file reader so we get progress
+            # while reading the compressed data
+            with gzip.GzipFile(fileobj=reader, mode='rb') as gz:
+                obj = pickle.load(gz)
+        else:
+            obj = pickle.load(reader)
 
         return obj
     except:
-        try:
-            with open(cache_loc, 'rb') as f : data = f.read()
-            return pickle.loads(gzip.decompress(data))
-        except:
-            raise ValueError('Invalid cache file provided')
+        raise ValueError('Invalid cache file provided')
+    finally:
+        reader.close()
 
 def get_cache(cache_file_name      : str          ,
               temp_cache_file_name : str          ,

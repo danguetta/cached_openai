@@ -9,6 +9,7 @@ import hashlib
 import importlib
 import json
 import numpy as np
+import openai
 
 # This file contains utilities to materialize the cache into a form that
 # can be distributed
@@ -18,23 +19,20 @@ def do_compress_embeddings(cache, hash_keys):
     Find the embedding entries, and compress them
     '''
 
-    rel_keys = [i for i in cache.keys() if 'embeddings' in json.loads(i)['stem']]
+    for key in cache.keys():
+        if ('out' in cache[key][0]) and (type(cache[key][0]['out']) == openai.types.create_embedding_response.CreateEmbeddingResponse):
+            assert len(cache[key]) == 1
 
-    for key in rel_keys:
-        for i in range(len(cache[key])):
-            for j in range(len(cache[key][i]['out'].data)):
-                cache[key][i]['out'].data[j].embedding = np.array(cache[key][i]['out'].data[j].embedding).astype(np.float16)
-
-        if hash_keys:
-            cache[hashlib.md5(key.encode('utf-8')).hexdigest()] = cache[key]
-            del cache[key]
-
+            for j in range(len(cache[key][0]['out'].data)):
+                cache[key][0]['out'].data[j].embedding = np.array(cache[key][0]['out'].data[j].embedding).astype(np.float16)
+                
 def materialize_cache(cache               : dict,
                       delay_responses     : bool,
                       compress            : bool,
                       hash_keys           : bool,
                       file_name           : str | None,
                       used_keys           : list | None = None,
+                      dehash              : list | None = None,
                       compress_embeddings : bool = False) -> str | None:
     '''
     This function materializes the cache into a pickle file for distribution. It accepts
@@ -58,13 +56,33 @@ def materialize_cache(cache               : dict,
     # Ensure every entry in those lists is a dict
     assert all([type(j) == dict for i in cache for j in cache[i]])
 
-    # If we want used keys only, filter down the cache
+    # Ensure only one dict at most is a non-pointer
+    assert all([sum(['TARGET' not in j for j in cache[i]]) <= 1 for i in cache])
+
+    # If the cache contains any hashed keys, we MUST be only saving used keys; otherwise, we
+    # can't reverse the hash and materialize
+    if any(['"' not in i for i in cache]) and (used_keys == None):
+        raise 'Attempting to reverse the hash without specifying used keys only'
+
+    # If we want used keys only, filter down the cache, and de-hash it; we'll re-hash it later if
+    # needed
     if used_keys:
         cache = {i:j for i, j in cache.items() if i in used_keys}
 
         # Remove any entries to pointers we've just removed
         for key in cache:
             cache[key] = [i for i in cache[key] if (list(i.keys()) != ['TARGET']) or (i['TARGET'] in cache)]
+
+        # De-hash
+        cache_keys = list(cache.keys())
+        for i in cache_keys:
+            for j in cache[i]:
+                if 'TARGET' in j:
+                    j['TARGET'] = dehash[j['TARGET']]
+
+            if '"' not in i:
+                cache[dehash[i]] = cache[i]
+                del cache[i]
 
     # If we want to compress embeddings, do it
     if compress_embeddings:
@@ -103,6 +121,7 @@ def create_self_contained(cache               : dict,
                           hash_keys           : bool,
                           file_name           : str | None,
                           used_keys           : list | None = None,
+                          dehash              : list | None = None,
                           compress_embeddings : bool = False) -> str | None:
     '''
     Returns a self-contained .py file that includes the cache inside of it.
@@ -115,7 +134,7 @@ def create_self_contained(cache               : dict,
 
     # Get the cache as a base 64 encoded string; do not include the file name to
     # ensure nothing is saved
-    b64_cache = materialize_cache(cache, delay_responses, compress, hash_keys, None, used_keys)
+    b64_cache = materialize_cache(cache, delay_responses, compress, hash_keys, None, used_keys, dehash, compress_embeddings)
 
     # Ensure only the OpenAI and AsyncOpenAI functions are exposed
     out_code.append("__all__ = ['OpenAI', 'AsyncOpenAI']")
@@ -137,6 +156,7 @@ def create_self_contained(cache               : dict,
     
     # Create the main entrypoints
     entrypoint_args = ( '                  api_key          ,'
+                        'base_url        = base_url         ,'
                         'cache           = cache            ,'
                         'verbose         = False            ,'
                         'dev_mode        = False            ,'
@@ -144,8 +164,8 @@ def create_self_contained(cache               : dict,
                         'temp_cache_file = None             ,'
                         'used_keys_file  = None             ')
     
-    out_code.append(f'def OpenAI     (api_key : str | None = None) : return CachedClient({entrypoint_args}, is_async = False)')
-    out_code.append(f'def AsyncOpenAI(api_key : str | None = None) : return CachedClient({entrypoint_args}, is_async = True)' )
+    out_code.append(f'def OpenAI     (api_key : str | None = None, base_url : str | None = None) : return CachedClient({entrypoint_args}, is_async = False)')
+    out_code.append(f'def AsyncOpenAI(api_key : str | None = None, base_url : str | None = None) : return CachedClient({entrypoint_args}, is_async = True)' )
 
     # Save the result
     with open(file_name, 'w') as f:

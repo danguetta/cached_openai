@@ -55,7 +55,28 @@ delay_responses, cache = utils.get_cache(CACHE_FILE_NAME, TEMP_CACHE_FILE_NAME, 
 #  Create the main entrypoints for the package  #
 #################################################
 
+def infer_base_url(api_key, base_url):
+    if api_key and api_key.startswith('sk-or-'):
+        print('WARNING: If you are using an OpenRouter key that you did not personally')
+        print('         purchase, the person who gave you the key will be able to see')
+        print('         the fact you used it, and may even be able to see the data you')
+        print('         sent to and received from OpenRouter. NEVER send confidential')
+        print('         data to OpenRouter unless you are using a key that you personally')
+        print('         purchased.')
+        print()
+    if api_key and api_key.startswith('sk-or-') and base_url != 'https://openrouter.ai/api/v1':
+        print('WARNING: You supplied an OpenRouter API key, but you did not instruct the')
+        print('         package to send your requests through OpenRouter. I fixed it for')
+        print('         you by adding')
+        print('             base_url = "https://openrouter.ai/api/v1"')
+        print('         to your client.')
+        print()
+        return "https://openrouter.ai/api/v1"
+    else:
+        return base_url
+
 def OpenAI(api_key : str | None = None, base_url : str | None = None):
+    base_url = infer_base_url(api_key, base_url)
     return cached_client.CachedClient(                  api_key                   ,
                                       base_url        = base_url                  ,
                                       cache           = cache                     ,
@@ -67,6 +88,7 @@ def OpenAI(api_key : str | None = None, base_url : str | None = None):
                                       used_keys_file  = USED_KEYS_FILE              )
 
 def AsyncOpenAI(api_key : str | None = None, base_url : str | None = None):
+    base_url = infer_base_url(api_key, base_url)
     return cached_client.CachedClient(                 api_key                    ,
                                       base_url        = base_url                  ,
                                       cache           = cache                     ,
@@ -134,8 +156,13 @@ def materialize(self_contained      : bool,
     if used_keys_only:
         with open(USED_KEYS_FILE, 'r') as f:
             used_keys = f.read().split('\n')
+        
+        with open('dehash_' + USED_KEYS_FILE, 'r') as f:
+            dehash = [i.split(':', 1) for i in f.read().strip().split('\n')]
+            dehash = {i[0] : i[1] for i in dehash}
     else:
         used_keys = None
+        dehash = None
 
     if self_contained:
         materialize_utils.create_self_contained(cache               = cache,
@@ -144,6 +171,7 @@ def materialize(self_contained      : bool,
                                                 hash_keys           = hash_keys,
                                                 file_name           = f'cached_openai_{current_date}.py',
                                                 used_keys           = used_keys,
+                                                dehash              = dehash,
                                                 compress_embeddings = compress_embeddings)
     else:
         materialize_utils.materialize_cache(cache               = cache,
@@ -154,4 +182,5 @@ def materialize(self_contained      : bool,
                                                                         + f'_{current_date}.'
                                                                             + CACHE_FILE_NAME.split('.')[-1],
                                             used_keys           = used_keys,
+                                            dehash              = dehash,
                                             compress_embeddings = compress_embeddings)
