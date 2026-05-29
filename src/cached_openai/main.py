@@ -157,9 +157,12 @@ def materialize(self_contained      : bool,
         with open(USED_KEYS_FILE, 'r') as f:
             used_keys = f.read().split('\n')
         
-        with open('dehash_' + USED_KEYS_FILE, 'r') as f:
-            dehash = [i.split(':', 1) for i in f.read().strip().split('\n')]
-            dehash = {i[0] : i[1] for i in dehash}
+        try:
+            with open('dehash_' + USED_KEYS_FILE, 'r') as f:
+                dehash = [i.split(':', 1) for i in f.read().strip().split('\n')]
+                dehash = {i[0] : i[1] for i in dehash}
+        except:
+            dehash = {}
     else:
         used_keys = None
         dehash = None

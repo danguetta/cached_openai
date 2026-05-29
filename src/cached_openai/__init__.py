@@ -9,13 +9,28 @@ if DEV_MODE:
 # Remove DEV_MODE from the namespace
 del DEV_MODE
 
-"""
-class ResponsePointer():
-    '''
-    This class is used to store duplicated cache entries without wasting space; if two entries
-    have the same value, one will simply contain a ResponsePointer pointing to the other
-    '''
+# Load openai.pydantic_function_tool, which we'll need
+from openai import pydantic_function_tool
 
-    def __init__(self, target):
-        self.target = target
-"""
+# Create a utility function to open the containing folder the notebook is in
+def show_file_location():
+    from pathlib import Path
+    import platform
+    import subprocess
+    import os
+
+    path = Path.cwd()
+
+    if platform.system() == "Windows":
+        os.startfile(path)
+    elif platform.system() == "Darwin":
+        subprocess.run(["open", path])
+    elif platform.system() == "Linux":
+        from IPython.display import Javascript, display
+
+        display(Javascript("""
+        window.open(
+        window.location.href.replace('/notebooks/', '/tree/').replace(/\\/[^\\/]*$/, ''),
+        '_blank'
+        )
+        """))

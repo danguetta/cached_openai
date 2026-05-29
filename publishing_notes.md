@@ -1,4 +1,9 @@
-Version is in toml file
+# TLDR
+
+  - Update the version is in toml file
+  - run `python -m build`
+  - run `python3 -m twine upload --verbose dist/*`
+  - run `./publish_alt.sh` for sub-packages
 
 # To publish a new version of the pacakge
 

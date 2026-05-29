@@ -77,7 +77,7 @@ def materialize_cache(cache               : dict,
         cache_keys = list(cache.keys())
         for i in cache_keys:
             for j in cache[i]:
-                if 'TARGET' in j:
+                if 'TARGET' in j and '"' not in j['TARGET']:
                     j['TARGET'] = dehash[j['TARGET']]
 
             if '"' not in i:

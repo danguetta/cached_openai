@@ -13,7 +13,7 @@ mv "pyproject_""$package_name"".toml" "pyproject.toml"
 mv "src/cached_openai" "src/""$package_name""_openai"
 
 python -m build
-python3 -m twine upload dist/*
+python3 -m twine upload --verbose dist/*
 
 mv "src/""$package_name""_openai" "src/cached_openai"
 

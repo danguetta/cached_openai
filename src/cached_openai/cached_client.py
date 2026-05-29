@@ -14,6 +14,11 @@ import io
 import struct
 import inspect
 import numpy as np
+import PIL.Image
+
+import pydantic._internal._model_construction
+import warnings
+import importlib
 
 # There are some keywords that - when provided to an OpenAI function - do not change
 # the result; we should ignore these completely when caching results
@@ -22,6 +27,34 @@ IRRELEVANT_KWARGS     = ['timeout', 'delay', 'overwrite_cache']
 # Some parameters are only used internally by this cache library and should not be
 # passed to OpenAI
 NON_OPENAI_PARAMS     = ['delay', 'overwrite_cache']
+
+# If OpenAI sends extraneous headers to OpenRouter, then this library can't be use in pyodide
+# in Excel online because CORS will block the sending of these headers to OpenRouter. Monkey
+# patch openai not to send them; make the patch idempotent
+import openai._base_client as bc
+if not hasattr(bc.BaseClient, "_original_build_headers"):
+    bc.BaseClient._original_build_headers = bc.BaseClient._build_headers            # type: ignore
+ 
+def _cors_safe_build_headers(self, options, *, retries_taken=0):
+    headers = self._original_build_headers(options, retries_taken=retries_taken)
+
+    for h in [
+        "x-stainless-read-timeout",
+        "x-stainless-retry-count",
+        "x-stainless-lang",
+        "x-stainless-package-version",
+        "x-stainless-os",
+        "x-stainless-arch",
+        "x-stainless-runtime",
+        "x-stainless-runtime-version",
+        "x-stainless-async",
+    ]:
+        headers.pop(h, None)
+        headers.pop(h.title(), None)
+
+    return headers
+
+bc.BaseClient._build_headers = _cors_safe_build_headers
 
 class CachedClient():
     '''
@@ -114,7 +147,13 @@ class CachedClient():
         # Remove any irrelevant kwargs
         kwargs = {k:v for k,v in kwargs.items() if k not in IRRELEVANT_KWARGS}
 
-        key = json.dumps({'stem':this_stem, 'kwargs':kwargs}, sort_keys=True)
+        pydantic._internal._model_construction.ModelMetaclass
+        def json_parse_fallback(obj):
+            if isinstance(obj, pydantic._internal._model_construction.ModelMetaclass):
+                return obj.model_json_schema()
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+        key = json.dumps({'stem':this_stem, 'kwargs':kwargs}, sort_keys=True, default=json_parse_fallback)
         if hash_key:
             return hashlib.md5(key.encode('utf-8')).hexdigest()
         else:
@@ -257,7 +296,15 @@ class CachedClient():
                     if type(i.embedding) == np.ndarray:
                         i.embedding = list(i.embedding)
 
-            # If we reached this point, we don't have an audio file - return
+            # If we saved a structured output response, unpack it
+            if (type(out) == dict) and ('parsed_chat_completion_data' in out):
+                out = openai.lib._parsing._completions.parse_chat_completion(
+                    response_format = kwargs.get('response_format', openai.NOT_GIVEN),
+                    input_tools = kwargs.get('tools', []),
+                    chat_completion=openai.types.chat.ChatCompletion.model_validate(out['parsed_chat_completion_data'])
+                )
+
+            # If we reached this point, we don't have a "special" output - return
             return {'out'      : out,
                     'run_time' : cache_entry['run_time']}
         else:
@@ -308,7 +355,15 @@ class CachedClient():
             # pulled from the ache
             if 'with_raw_response' in self._stem:
                 out = out.parse()
-            
+
+            # If we have a structured output response, it can't be pickled natively - we need to
+            # serialize it in a very specific way; for some reason, model_dump triggers a warning
+            # to suppress that - it still works for our purposes
+            if isinstance(out, openai.types.chat.parsed_chat_completion.ParsedChatCompletion):
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, message=r'Pydantic serializer warnings:.*')
+                    out = {'parsed_chat_completion_data' : out.model_dump(mode='python')}
+                    
             # Prepare the output object
             out_obj = {'out':out, 'time_saved':time.time(), 'run_time':run_time}
 
@@ -430,7 +485,7 @@ class CachedClient():
         # gemini-embedding-2-preview is an important model, but unfortunately it doesn't
         # return in a format that is compatible with the OpenAI SDK. So we need to create a
         # shim to make it work
-        if (self._stem == ['embeddings', 'create']) and (kwargs.get('model', '') == 'google/gemini-embedding-2-preview'):
+        if (self._stem == ['embeddings', 'create']) and (kwargs.get('model', '') in ['google/gemini-embedding-2-preview', 'gemini-embedding-2-preview']):
             def make_gemini_embedding_payload(**kwargs):
                 return {'url'     : "https://openrouter.ai/api/v1/embeddings",
                         'headers' : {
@@ -495,12 +550,26 @@ class CachedClient():
                           "requests') for details" )
                 kwargs_copy = {i:j for i, j in kwargs_copy.items() if i != 'seed'}
 
+        # Create a function that converts any base64 encoded images to PIL images
+        def decode_image_in_response(resp):
+            if type(resp) == openai.types.chat.chat_completion.ChatCompletion:
+                for choice in resp.choices:
+                    if hasattr(choice.message, 'images'):
+                        for image_n in range(len(choice.message.images)):
+                            image = choice.message.images[image_n]
+                            if image.get('type') == 'image_url':
+                                image_url = image.get('image_url',{}).get('url') or ''
+                                if image_url.startswith('data:image/png;base64,'):
+                                    choice.message.images[image_n] = PIL.Image.open(io.BytesIO(base64.b64decode(image_url.split(",", 1)[1])))
+            return resp
+        
         # Call it, write the result to the cache, and return either the value or the co-routine
         # if we are in async mode
         if self._is_async:
             async def async_func():
                 start_time = time.time()
                 out = await rel_func(**kwargs_copy)
+                out = decode_image_in_response(out)
                 self.write_to_cache(kwargs, out, time.time() - start_time)
                 return out
             
@@ -525,7 +594,7 @@ class CachedClient():
                 return make_generator()
 
             else:
-                out = rel_func(**kwargs_copy)
+                out = decode_image_in_response(rel_func(**kwargs_copy))
 
                 self.write_to_cache(kwargs, out, time.time() - start_time)
 
